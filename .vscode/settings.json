@@ -1,0 +1,16 @@
+{
+    "cSpell.words": [
+        "displayname",
+        "hashpw",
+        "jsonable",
+        "mongoengine"
+    ],
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportMissingTypeStubs": "none",
+        "reportUnknownArgumentType": "none",
+        "reportUnknownMemberType": "none",
+        "reportAttributeAccessIssue": "none",
+        "reportUnknownVariableType": "none",
+        "reportUnusedVariable": "none"
+    },
+}
