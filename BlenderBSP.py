@@ -1241,6 +1241,7 @@ def import_bsp_file(import_settings):
     set_blender_clip_spaces(4.0, clip_end)
     logger.end_task()
 
+    """
     logger.start_task("Get BSP Images")
     bsp_images = bsp_file.get_bsp_images()
     logger.log_loop_start("Process BSP Images", len(bsp_images))
@@ -1263,6 +1264,7 @@ def import_bsp_file(import_settings):
             print("Couldn't retreve image from bsp:", image.name)
     logger.log_loop_end("Process BSP Images", len(bsp_images))
     logger.end_task()
+    """
 
     logger.start_task("Handle External Lightmaps")
     if bsp_file.num_internal_lm_ids >= 0 and bsp_file.external_lm_files:

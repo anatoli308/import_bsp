@@ -424,6 +424,8 @@ class BSP_READER:
                 image.num_components = 3
                 image.bppc = 8
                 image.data = pixels
+                # Skip adding $lightmap image - ANATOLI TESTING
+                #if image.name != "$lightmap":
                 images.append(image)
 
                 if deluxemapped:

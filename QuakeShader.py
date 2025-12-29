@@ -639,9 +639,10 @@ class quake_shader:
                         node_rgbGen.blend_type = "MULTIPLY"
                         node_rgbGen.inputs[0].default_value = 1.0
                         shader.links.new(new_color_out, node_rgbGen.inputs["Color1"])
-                        shader.links.new(
-                            lighting.outputs[0], node_rgbGen.inputs["Color2"]
-                        )
+                        #ANATOLI TEST - DISABLE LIGHTING MIX for unity
+                        #shader.links.new(
+                        #    lighting.outputs[0], node_rgbGen.inputs["Color2"]
+                        #)
                         new_color_out = node_rgbGen.outputs["Color"]
 
         return new_color_out, new_alpha_out

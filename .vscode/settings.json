@@ -5,12 +5,22 @@
         "jsonable",
         "mongoengine"
     ],
+    "python.analysis.extraPaths": [
+        "D:/Blender Foundation/Blender 4.5/4.5/python/scripts/modules"
+    ],
     "python.analysis.diagnosticSeverityOverrides": {
         "reportMissingTypeStubs": "none",
         "reportUnknownArgumentType": "none",
         "reportUnknownMemberType": "none",
         "reportAttributeAccessIssue": "none",
         "reportUnknownVariableType": "none",
-        "reportUnusedVariable": "none"
+        "reportUnusedVariable": "none",
+        "reportUnknownParameterType": "none",
+        "reportMissingParameterType": "none",
+        "reportSelfClsParameterName": "none",
+        "reportMissingImports": "none",
+        "reportConstantRedefinition":"none",
+        "reportPossiblyUnboundVariable":"none",
+        "reportOptionalMemberAccess":"none"
     },
 }
