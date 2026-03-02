@@ -1779,38 +1779,41 @@ def build_quake_shaders(VFS, import_settings, object_list):
                     has_external_lm = True
             
             # Set custom properties on objects that use this shader
+            # Use material slot index as suffix to avoid overwriting when
+            # an object references more than one shader.
             for obj in object_list:
-                uses_shader = False
-                for material_slot in obj.material_slots:
+                slot_index = None
+                for si, material_slot in enumerate(obj.material_slots):
                     if material_slot.name == current_shader.name:
-                        uses_shader = True
+                        slot_index = si
                         break
                 
-                if uses_shader:
+                if slot_index is not None:
+                    suffix = "_{}".format(slot_index)
                     if "first_line" in attributes:
-                        obj["first_line"] = attributes["first_line"]
+                        obj["first_line" + suffix] = attributes["first_line"]
                     if "shader_file" in attributes:
-                        obj["shader_file"] = attributes["shader_file"]
+                        obj["shader_file" + suffix] = attributes["shader_file"]
                     if "surfaceparm" in attributes:
-                        obj["surface_types_json"] = json.dumps(
+                        obj["surface_types_json" + suffix] = json.dumps(
                             attributes.get("surfaceparm", [])
                         )
                     if "q3map_material" in attributes:
-                        obj["q3map_material"] = attributes["q3map_material"][0]
+                        obj["q3map_material" + suffix] = attributes["q3map_material"][0]
                     if "cull" in attributes:
-                        obj["cull"] = json.dumps(attributes.get("cull", []))
+                        obj["cull" + suffix] = json.dumps(attributes.get("cull", []))
                     if "skyparms" in attributes:
-                        obj["sun"] = json.dumps(attributes.get("sun", []))
-                        obj["surfacelight"] = json.dumps(attributes.get("q3map_surfacelight", []))
-                        obj["sky_types_json"] = json.dumps(
+                        obj["sun" + suffix] = json.dumps(attributes.get("sun", []))
+                        obj["surfacelight" + suffix] = json.dumps(attributes.get("q3map_surfacelight", []))
+                        obj["sky_types_json" + suffix] = json.dumps(
                             attributes.get("skyparms", [])
                         )
                     if "fogparms" in attributes:
-                        obj["fog_types_json"] = json.dumps(
+                        obj["fog_types_json" + suffix] = json.dumps(
                             attributes.get("fogparams", [])
                         )
                     if "qer_trans" in attributes:
-                        obj["transvalue_json"] = json.dumps(attributes.get("qer_trans", []))
+                        obj["transvalue_json" + suffix] = json.dumps(attributes.get("qer_trans", []))
                     
                     # Check if any stage has blendfunc containing "src_alpha"
                     if len(stages) > 0:
@@ -1818,14 +1821,14 @@ def build_quake_shaders(VFS, import_settings, object_list):
                             if "blendfunc" in stage:
                                 blendfunc_value = stage["blendfunc"]
                                 if isinstance(blendfunc_value, str) and "src_alpha" in blendfunc_value:
-                                    obj["is_transparent"] = True
+                                    obj["is_transparent" + suffix] = True
                                     break
                             if "alphafunc" in stage:
-                                obj["is_transparent"] = True
+                                obj["is_transparent" + suffix] = True
                             if "map" in stage:
                                 map_value = stage["map"]
                                 if isinstance(map_value, str):
-                                    obj["mapped_texture"] = map_value.split()[0]
+                                    obj["mapped_texture" + suffix] = map_value.split()[0]
                                     break
             
             # polygon offset to vertex group
