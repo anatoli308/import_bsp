@@ -77,6 +77,7 @@ class Import_Settings:
     normal_map_option: NormalMapOption = NormalMapOption.DIRECTX
     surface_info_storing: Surface_info_storing = Surface_info_storing.NONE
     unity_mode: bool = False
+    merge_surfaces_by_material: bool = False
 
     def __post_init__(self):
         self.bsp_name = guess_map_name(self.file)

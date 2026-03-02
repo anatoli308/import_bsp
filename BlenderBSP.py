@@ -743,7 +743,17 @@ def split_object_into_individual_surfaces(
 
     print(f"  📊 Grouped into {len(surface_groups)} material groups from {obj.name}")
 
-    # Erstelle ein separates Objekt für jede Surface
+    # PROFILING: Zeitmessung pro Operation
+    _t_model_build = 0.0
+    _t_mesh_create = 0.0
+    _t_obj_create = 0.0
+    _t_props = 0.0
+    _t_link = 0.0
+    _t_collection = 0.0
+
+    merge_by_material = getattr(import_settings, "merge_surfaces_by_material", False)
+
+    # Erstelle ein separates Objekt für jede Surface oder ein Objekt pro Material-Gruppe
     for material_name, face_ids in surface_groups.items():
         material_groups_processed += 1
         if material_groups_processed % 10 == 0:
@@ -751,8 +761,12 @@ def split_object_into_individual_surfaces(
             print(
                 f"    Processing material group {material_groups_processed}/{len(surface_groups)} ({elapsed:.1f}s elapsed)..."
             )
+            print(
+                f"      ⏱ model_build={_t_model_build:.1f}s mesh_create={_t_mesh_create:.1f}s obj_create={_t_obj_create:.1f}s props={_t_props:.1f}s link={_t_link:.1f}s collection={_t_collection:.1f}s"
+            )
 
         # Erstelle Collection für diese Material-Gruppe
+        _tc = time.time()
         safe_material_name = (
             material_name.replace("/", "_")
             .replace("\\", "_")
@@ -767,76 +781,157 @@ def split_object_into_individual_surfaces(
             parent_collection.children.link(group_collection)
 
         material_collections[material_name] = group_collection
+        _t_collection += time.time() - _tc
 
-        for surface_index, face_id in enumerate(face_ids):
-            # Erstelle ein neues Model für diese einzelne Surface
-            face = bsp.lumps["surfaces"][face_id]
-            surface_type = Surface_Type.bsp_value(face.type)
+        if merge_by_material:
+            _t0 = time.time()
+            model = MODEL("*{}_material_{}".format(model_id, safe_material_name))
+            model.init_bsp_face_data_single(bsp, import_settings)
 
-            # Erstelle ein Model nur für diese eine Surface
-            model = MODEL("*{}_surface_{}".format(model_id, face_id))
-            model.init_bsp_face_data(bsp, import_settings)
+            for face_id in face_ids:
+                face = bsp.lumps["surfaces"][face_id]
+                surface_type = Surface_Type.bsp_value(face.type)
 
-            if surface_type in (
-                Surface_Type.PLANAR,
-                Surface_Type.TRISOUP,
-                Surface_Type.FAKK_TERRAIN,
-            ):
-                model.add_bsp_surface(bsp, face, import_settings)
-            elif surface_type == Surface_Type.PATCH:
-                model.add_bsp_patch(bsp, face, import_settings)
+                if surface_type in (
+                    Surface_Type.PLANAR,
+                    Surface_Type.TRISOUP,
+                    Surface_Type.FAKK_TERRAIN,
+                ):
+                    model.add_bsp_surface(bsp, face, import_settings)
+                elif surface_type == Surface_Type.PATCH:
+                    model.add_bsp_patch(bsp, face, import_settings)
+
+            _t_model_build += time.time() - _t0
 
             if model.current_index > 0:
+                _t1 = time.time()
                 blender_meshes = create_meshes_from_models([model])
+                _t_mesh_create += time.time() - _t1
+
                 if blender_meshes:
                     for mesh_name, (mesh, vertex_groups) in blender_meshes.items():
                         if mesh is None:
                             continue
 
-                        # Erstelle Unity-kompatiblen Objektnamen für FBX-Export
+                        _t2 = time.time()
                         safe_object_type = object_type.replace("_", "")
-                        safe_material_name = (
-                            material_name.replace("/", "_")
-                            .replace("\\", "_")
-                            .replace(" ", "_")
-                            .replace(".", "_")
-                        )
-                        obj_name = "{}_{}_surface_{}".format(
-                            safe_object_type, safe_material_name, face_id
+                        obj_name = "{}_{}_group".format(
+                            safe_object_type, safe_material_name
                         )
                         blender_obj = bpy.data.objects.new(obj_name, mesh)
 
-                        # Setze Position, Rotation und Skalierung
                         blender_obj.location = obj.position
                         blender_obj.rotation_euler = obj.rotation
                         blender_obj.scale = obj.scale
 
-                        # Füge Vertex Groups hinzu
                         for vert_group in vertex_groups:
                             vg = blender_obj.vertex_groups.get(vert_group)
                             if vg is None:
                                 vg = blender_obj.vertex_groups.new(name=vert_group)
                             vg.add(list(vertex_groups[vert_group]), 1.0, "ADD")
+                        _t_obj_create += time.time() - _t2
 
-                        # Kopiere Custom Properties vom ursprünglichen Objekt
+                        _t3 = time.time()
                         for prop_name, prop_value in obj.custom_parameters.items():
                             blender_obj[prop_name] = prop_value
 
-                        # Füge Metadaten hinzu
                         blender_obj["material_name"] = material_name
-                        blender_obj["surface_id"] = face_id
-                        blender_obj["texture_id"] = face.texture
-                        blender_obj["surface_index"] = surface_index
+                        blender_obj["surface_id"] = -1
+                        blender_obj["texture_id"] = -1
+                        blender_obj["surface_index"] = -1
                         blender_obj["material_group_size"] = len(face_ids)
                         blender_obj["object_type"] = object_type
                         blender_obj["original_object"] = obj.name
+                        _t_props += time.time() - _t3
 
-                        # Verlinke Objekt zur entsprechenden Material-Gruppen-Collection
+                        _t4 = time.time()
                         group_collection = material_collections[material_name]
                         group_collection.objects.link(blender_obj)
+                        _t_link += time.time() - _t4
 
                         individual_objects.append(blender_obj)
                         processed_count += 1
+        else:
+            for surface_index, face_id in enumerate(face_ids):
+                # Erstelle ein neues Model für diese einzelne Surface
+                _t0 = time.time()
+                face = bsp.lumps["surfaces"][face_id]
+                surface_type = Surface_Type.bsp_value(face.type)
+
+                # Erstelle ein Model nur für diese eine Surface
+                model = MODEL("*{}_surface_{}".format(model_id, face_id))
+                model.init_bsp_face_data_single(bsp, import_settings)
+
+                if surface_type in (
+                    Surface_Type.PLANAR,
+                    Surface_Type.TRISOUP,
+                    Surface_Type.FAKK_TERRAIN,
+                ):
+                    model.add_bsp_surface(bsp, face, import_settings)
+                elif surface_type == Surface_Type.PATCH:
+                    model.add_bsp_patch(bsp, face, import_settings)
+                _t_model_build += time.time() - _t0
+
+                if model.current_index > 0:
+                    _t1 = time.time()
+                    blender_meshes = create_meshes_from_models([model])
+                    _t_mesh_create += time.time() - _t1
+
+                    if blender_meshes:
+                        for mesh_name, (mesh, vertex_groups) in blender_meshes.items():
+                            if mesh is None:
+                                continue
+
+                            _t2 = time.time()
+                            # Erstelle Unity-kompatiblen Objektnamen für FBX-Export
+                            safe_object_type = object_type.replace("_", "")
+                            safe_material_name = (
+                                material_name.replace("/", "_")
+                                .replace("\\", "_")
+                                .replace(" ", "_")
+                                .replace(".", "_")
+                            )
+                            obj_name = "{}_{}_surface_{}".format(
+                                safe_object_type, safe_material_name, face_id
+                            )
+                            blender_obj = bpy.data.objects.new(obj_name, mesh)
+
+                            # Setze Position, Rotation und Skalierung
+                            blender_obj.location = obj.position
+                            blender_obj.rotation_euler = obj.rotation
+                            blender_obj.scale = obj.scale
+
+                            # Füge Vertex Groups hinzu
+                            for vert_group in vertex_groups:
+                                vg = blender_obj.vertex_groups.get(vert_group)
+                                if vg is None:
+                                    vg = blender_obj.vertex_groups.new(name=vert_group)
+                                vg.add(list(vertex_groups[vert_group]), 1.0, "ADD")
+                            _t_obj_create += time.time() - _t2
+
+                            _t3 = time.time()
+                            # Kopiere Custom Properties vom ursprünglichen Objekt
+                            for prop_name, prop_value in obj.custom_parameters.items():
+                                blender_obj[prop_name] = prop_value
+
+                            # Füge Metadaten hinzu
+                            blender_obj["material_name"] = material_name
+                            blender_obj["surface_id"] = face_id
+                            blender_obj["texture_id"] = face.texture
+                            blender_obj["surface_index"] = surface_index
+                            blender_obj["material_group_size"] = len(face_ids)
+                            blender_obj["object_type"] = object_type
+                            blender_obj["original_object"] = obj.name
+                            _t_props += time.time() - _t3
+
+                            # Verlinke Objekt zur entsprechenden Material-Gruppen-Collection
+                            _t4 = time.time()
+                            group_collection = material_collections[material_name]
+                            group_collection.objects.link(blender_obj)
+                            _t_link += time.time() - _t4
+
+                            individual_objects.append(blender_obj)
+                            processed_count += 1
 
         # Fortschritts-Logging nur alle 500 Items
         if processed_count % 500 == 0 and processed_count > 0:
@@ -844,6 +939,15 @@ def split_object_into_individual_surfaces(
             print(
                 f"    Processed {processed_count} surfaces ({elapsed:.1f}s elapsed)..."
             )
+
+    # PROFILING: Finale Zusammenfassung
+    print(f"  ⏱ PROFILING TOTAL:")
+    print(f"    model_build:  {_t_model_build:.2f}s")
+    print(f"    mesh_create:  {_t_mesh_create:.2f}s")
+    print(f"    obj_create:   {_t_obj_create:.2f}s")
+    print(f"    props:        {_t_props:.2f}s")
+    print(f"    link:         {_t_link:.2f}s")
+    print(f"    collection:   {_t_collection:.2f}s")
 
     # Detaillierte Zusammenfassung für Surface-Splitting
     elapsed = time.time() - surface_start_time

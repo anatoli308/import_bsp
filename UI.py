@@ -118,6 +118,10 @@ class Import_ID3_BSP(bpy.types.Operator, ImportHelper):
             ('Primitive', 'Primitive packing', "Tightly pack all vertex lit primitives. Useful for light baking", 1),
             ('UVMap', 'Diffuse UV copy', "Copies the diffuse UVs for the vertex lit surfaces. Useful for patching lightmap uvs", 2),
         ])
+    merge_surfaces_by_material: BoolProperty(
+        name="Merge surfaces by material",
+        description="Create one object per material group instead of one per surface",
+        default=False)
 
     def execute(self, context):
         addon_name = __name__.split('.')[0]
@@ -164,7 +168,8 @@ class Import_ID3_BSP(bpy.types.Operator, ImportHelper):
             entity_dict=entity_dict,
             vert_lit_handling=stupid_dict[self.vert_map_packing],
             normal_map_option=prefs.normal_map_option,
-            surface_info_storing=Surface_info_storing.PER_TRIANGLE
+            surface_info_storing=Surface_info_storing.PER_TRIANGLE,
+            merge_surfaces_by_material=self.merge_surfaces_by_material
         )
 
         # scene information
@@ -212,6 +217,8 @@ class Import_ID3_BSP(bpy.types.Operator, ImportHelper):
         row.prop(self, "vert_map_packing")
         row = layout.row()
         row.prop(prefs, "normal_map_option")
+        row = layout.row()
+        row.prop(self, "merge_surfaces_by_material")
 
 class Import_MAP(bpy.types.Operator, ImportHelper):
     """Import a ID3 engine MAP file (Quake 3, Jedi Outcast/Academy, etc.)"""

@@ -1,4 +1,5 @@
 from math import floor
+from collections import defaultdict
 from .ID3Brushes import Plane, parse_brush
 from .ImportSettings import Surface_Type, Surface_info_storing
 
@@ -197,6 +198,56 @@ class ID3Model:
         self.ctrlPoints = [[0 for x in range(self.MAX_GRID_SIZE)]
                            for y in range(self.MAX_GRID_SIZE)]
 
+    def init_bsp_face_data_single(self, bsp, import_settings):
+        """Lightweight init for single-surface processing.
+        Uses defaultdict instead of pre-allocating huge index_mapping list.
+        Skips ctrlPoints allocation (lazy-init in add_bsp_patch)."""
+        self.vertex_groups["Lightmapped"] = set()
+        self.vertex_groups["Patch mesh"] = set()
+        self.vertex_groups["Malfomed Lightmap TCs"] = set()
+        self.vertex_data_layers["BSP_VERT_INDEX"] = (
+            self.VertexAttribute(self.indices))
+        if import_settings.surface_info_storing == Surface_info_storing.PER_VERTEX:
+            self.vertex_data_layers["BSP_SHADER_INDEX"] = (
+                self.VertexAttribute(self.indices))
+            self.vertex_data_layers["BSP_SURFACE_INDEX"] = (
+                self.VertexAttribute(self.indices))
+            self.vertex_data_layers["BSP_FOG_INDEX"] = (
+                self.VertexAttribute(self.indices))
+            self.vertex_data_layers["BSP_SURFACE_TYPE"] = (
+                self.VertexAttribute(self.indices))
+        if import_settings.surface_info_storing == Surface_info_storing.PER_TRIANGLE:
+            self.face_data_layers["BSP_SHADER_INDEX"] = []
+            self.face_data_layers["BSP_SURFACE_INDEX"] = []
+            self.face_data_layers["BSP_FOG_INDEX"] = []
+            self.face_data_layers["BSP_SURFACE_TYPE"] = []
+        self.vertex_colors["Color"] = (
+            self.VertexAttribute(self.indices))
+        self.vertex_colors["Alpha"] = (
+            self.VertexAttribute(self.indices))
+        self.uv_layers["UVMap"] = (
+            self.VertexAttribute(self.indices))
+        self.uv_layers["LightmapUV"] = (
+            self.VertexAttribute(self.indices))
+
+        for i in range(2, bsp.lightmaps+1):
+            self.vertex_colors["Color"+str(i)] = (
+                self.VertexAttribute(self.indices))
+            self.uv_layers["LightmapUV"+str(i)] = (
+                self.VertexAttribute(self.indices))
+
+        self.current_index = 0
+        # SPARSE dict statt riesiger Liste - O(1) statt O(n_drawverts)
+        self.index_mapping = defaultdict(lambda: -2)
+        self._use_dict_mapping = True
+        self.ext_lm_tc = []
+
+        self.num_bsp_vertices = len(bsp.lumps["drawverts"])
+        self.vertex_lightmap_id = self.VertexAttribute(self.indices)
+
+        self.MAX_GRID_SIZE = 65
+        # ctrlPoints werden NICHT vorab allokiert - nur bei Bedarf in add_bsp_patch
+
     def init_bsp_brush_data(self, bsp):
         self.uv_layers["UVMap"] = (
             self.VertexAttribute(self.indices))
@@ -228,7 +279,8 @@ class ID3Model:
 
     def add_new_vertex_to_bsp(self, bsp, vert):
         drawverts_lump = bsp.lumps["drawverts"]
-        self.index_mapping.append(-2)
+        if not getattr(self, '_use_dict_mapping', False):
+            self.index_mapping.append(-2)
         new_bsp_index = len(drawverts_lump)
         drawverts_lump.append(vert)
         return new_bsp_index
@@ -506,6 +558,11 @@ class ID3Model:
         drawverts_lump = bsp.lumps["drawverts"]
         width = int(face.patch_width-1)
         height = int(face.patch_height-1)
+
+        # Lazy-init ctrlPoints falls noch nicht allokiert (single-surface mode)
+        if not hasattr(self, 'ctrlPoints'):
+            self.ctrlPoints = [[0 for x in range(self.MAX_GRID_SIZE)]
+                               for y in range(self.MAX_GRID_SIZE)]
 
         self.bspPoints = [[-1 for x in range(self.MAX_GRID_SIZE)]
                           for y in range(self.MAX_GRID_SIZE)]

@@ -21,6 +21,13 @@
         "reportMissingImports": "none",
         "reportConstantRedefinition":"none",
         "reportPossiblyUnboundVariable":"none",
-        "reportOptionalMemberAccess":"none"
+        "reportOptionalMemberAccess":"none",
+        "reportInvalidTypeForm":"none",
+        "reportArgumentType":"none",
+        "reportUnnecessaryComparison":"none",
+        "reportOperatorIssue":"none",
+        "reportUntypedBaseClass":"none",
+        "reportOptionalIterable":"none",
+        "reportOptionalSubscript":"none"
     },
 }
