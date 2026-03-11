@@ -1729,10 +1729,8 @@ def build_quake_shaders(VFS, import_settings, object_list):
         if m[2]:
             qs.set_grid_lit()
 
-        if shader_name in shaders:
-            shaders[l_format(shader_name)].append(qs)
-        else:
-            shaders.setdefault(l_format(shader_name), []).append(qs)
+        formatted_shader_name = l_format(shader_name)
+        shaders.setdefault(formatted_shader_name, []).append(qs)
 
     shader_info = ID3Shader.get_material_dicts(VFS, import_settings, shaders.keys())
 
@@ -1790,10 +1788,10 @@ def build_quake_shaders(VFS, import_settings, object_list):
                 
                 if slot_index is not None:
                     suffix = "_{}".format(slot_index)
-                    if "first_line" in attributes:
-                        obj["first_line" + suffix] = attributes["first_line"]
-                    if "shader_file" in attributes:
-                        obj["shader_file" + suffix] = attributes["shader_file"]
+                    #if "first_line" in attributes:
+                    #    obj["first_line" + suffix] = attributes["first_line"]
+                    #if "shader_file" in attributes:
+                    #    obj["shader_file" + suffix] = attributes["shader_file"]
                     if "surfaceparm" in attributes:
                         obj["surface_types_json" + suffix] = json.dumps(
                             attributes.get("surfaceparm", [])
@@ -1815,7 +1813,8 @@ def build_quake_shaders(VFS, import_settings, object_list):
                     if "qer_trans" in attributes:
                         obj["transvalue_json" + suffix] = json.dumps(attributes.get("qer_trans", []))
                     
-                    # Check if any stage has blendfunc containing "src_alpha"
+                    # Check transparency and mapped texture in separate loops
+                    # so a break in one doesn't skip the other.
                     if len(stages) > 0:
                         for stage in stages:
                             if "blendfunc" in stage:
@@ -1825,9 +1824,12 @@ def build_quake_shaders(VFS, import_settings, object_list):
                                     break
                             if "alphafunc" in stage:
                                 obj["is_transparent" + suffix] = True
+                                break
+
+                        for stage in stages:
                             if "map" in stage:
                                 map_value = stage["map"]
-                                if isinstance(map_value, str):
+                                if isinstance(map_value, str) and "$whiteimage" not in map_value and "$lightmap" not in map_value:
                                     obj["mapped_texture" + suffix] = map_value.split()[0]
                                     break
             

@@ -835,13 +835,13 @@ def split_object_into_individual_surfaces(
                         for prop_name, prop_value in obj.custom_parameters.items():
                             blender_obj[prop_name] = prop_value
 
-                        blender_obj["material_name"] = material_name
-                        blender_obj["surface_id"] = -1
-                        blender_obj["texture_id"] = -1
-                        blender_obj["surface_index"] = -1
-                        blender_obj["material_group_size"] = len(face_ids)
-                        blender_obj["object_type"] = object_type
-                        blender_obj["original_object"] = obj.name
+                        #blender_obj["material_name"] = material_name
+                        #blender_obj["surface_id"] = -1
+                        #blender_obj["texture_id"] = -1
+                        #blender_obj["surface_index"] = -1
+                        #blender_obj["material_group_size"] = len(face_ids)
+                        #blender_obj["object_type"] = object_type
+                        #blender_obj["original_object"] = obj.name
                         _t_props += time.time() - _t3
 
                         _t4 = time.time()
@@ -915,13 +915,13 @@ def split_object_into_individual_surfaces(
                                 blender_obj[prop_name] = prop_value
 
                             # Füge Metadaten hinzu
-                            blender_obj["material_name"] = material_name
-                            blender_obj["surface_id"] = face_id
-                            blender_obj["texture_id"] = face.texture
-                            blender_obj["surface_index"] = surface_index
-                            blender_obj["material_group_size"] = len(face_ids)
-                            blender_obj["object_type"] = object_type
-                            blender_obj["original_object"] = obj.name
+                            #blender_obj["material_name"] = material_name
+                            #blender_obj["surface_id"] = face_id
+                            #blender_obj["texture_id"] = face.texture
+                            #blender_obj["surface_index"] = surface_index
+                            #blender_obj["material_group_size"] = len(face_ids)
+                            #blender_obj["object_type"] = object_type
+                            #blender_obj["original_object"] = obj.name
                             _t_props += time.time() - _t3
 
                             # Verlinke Objekt zur entsprechenden Material-Gruppen-Collection
