@@ -1480,9 +1480,22 @@ def import_bsp_file(import_settings):
             collision_collection = bpy.data.collections.new(name=col_name)
             main_collection.children.link(collision_collection)
 
-        # Build collision from compiled faces (proper openings/arches)
-        # but filter out models/ shaders at BSP face level (no tree quads).
-        # Includes all models (*0, *1, *2, ...).
+        # === HYBRID COLLISION: compiled faces + invisible raw brushes ===
+        #
+        # Compiled faces: walls, terrain, arches (correct openings), all models
+        #   → skip models/ shaders (tree quads)
+        # Raw brushes (*0 only): ONLY invisible clip/nodraw_solid brushes
+        #   → these never appear in compiled faces
+        #
+        # No overlap, no double collision.
+
+        SURF_NODRAW = 0x00200000
+        CONTENTS_SOLID      = 0x00000001
+        CONTENTS_PLAYERCLIP = 0x00000010
+        CONTENTS_SHOTCLIP   = 0x00000080
+        SOLID_MASK = CONTENTS_SOLID | CONTENTS_PLAYERCLIP | CONTENTS_SHOTCLIP
+
+        # 1) Compiled faces for all models (*0, *1, *2, ...)
         bsp_surface_types = (
             Surface_Type.PLANAR,
             Surface_Type.TRISOUP,
@@ -1499,7 +1512,6 @@ def import_bsp_file(import_settings):
                 face_id = first_face + i
                 face = bsp_file.lumps["surfaces"][face_id]
 
-                # Skip tree/model faces — no collision for bsp-embedded models
                 shader_name = bsp_file.lumps["shaders"][face.texture].name.decode("latin-1")
                 if shader_name.startswith("models/"):
                     continue
@@ -1516,12 +1528,45 @@ def import_bsp_file(import_settings):
             if model.current_index > 0:
                 bsp_models.append(model)
 
+        # 2) Raw brushes from *0: ONLY invisible collision (nodraw + solid)
+        #    These are playerclip, shotclip, nodraw_solid — never in compiled faces.
+        nodraw_solid_shaders = set()
+        for shader in bsp_file.lumps["shaders"]:
+            if (shader.flags & SURF_NODRAW) and (shader.contents & SOLID_MASK):
+                nodraw_solid_shaders.add(shader.name.decode("latin-1"))
+
+        if nodraw_solid_shaders:
+            brush_model = MODEL("*0_clip")
+            brush_model.add_bsp_model_brushes(bsp_file, 0, import_settings)
+            if brush_model.current_index > 0:
+                bsp_models.append(brush_model)
+
         blender_meshes = create_meshes_from_models(bsp_models)
 
         for mesh_name in blender_meshes:
             mesh, vertex_groups = blender_meshes[mesh_name]
             if mesh is None:
                 mesh = bpy.data.meshes.new(mesh_name)
+
+            # For *0_clip: keep ONLY nodraw+solid materials (clips, nodraw_solid)
+            if mesh_name == "*0_clip" and len(mesh.materials) > 0:
+                keep_indices = set()
+                for i, mat in enumerate(mesh.materials):
+                    if mat is not None:
+                        base = mat.name[:-6] if mat.name.endswith(".brush") else mat.name
+                        if base in nodraw_solid_shaders or mat.name in nodraw_solid_shaders:
+                            keep_indices.add(i)
+                remove_indices = {i for i in range(len(mesh.materials))} - keep_indices
+                if remove_indices:
+                    bm = bmesh.new()
+                    bm.from_mesh(mesh)
+                    bm.faces.ensure_lookup_table()
+                    faces_to_delete = [f for f in bm.faces if f.material_index in remove_indices]
+                    if faces_to_delete:
+                        bmesh.ops.delete(bm, geom=faces_to_delete, context='FACES')
+                    bm.to_mesh(mesh)
+                    bm.free()
+                    mesh.update()
 
             if len(mesh.polygons) == 0:
                 bpy.data.meshes.remove(mesh)
