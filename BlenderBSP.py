@@ -17,6 +17,7 @@
 # ##### END GPL LICENSE BLOCK #####
 
 import bpy
+import bmesh
 import time
 
 from .idtech3lib.ID3VFS import Q3VFS
@@ -684,6 +685,24 @@ def create_object_type_collection(main_collection, object_type):
     return type_collection
 
 
+def cleanup_bsp_mesh(mesh, merge_threshold=0.001):
+    """Cleans up a BSP brush mesh: merges duplicate vertices, removes degenerate faces and loose geometry."""
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=merge_threshold)
+    bmesh.ops.dissolve_degenerate(bm, edges=bm.edges, dist=merge_threshold)
+    # Delete loose verts and edges
+    loose_verts = [v for v in bm.verts if not v.link_faces]
+    if loose_verts:
+        bmesh.ops.delete(bm, geom=loose_verts, context='VERTS')
+    loose_edges = [e for e in bm.edges if not e.link_faces]
+    if loose_edges:
+        bmesh.ops.delete(bm, geom=loose_edges, context='EDGES')
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.update()
+
+
 def split_object_into_individual_surfaces(
     obj, bsp, import_settings, parent_collection, object_type="worldspawn"
 ):
@@ -836,13 +855,16 @@ def split_object_into_individual_surfaces(
                             blender_obj[prop_name] = prop_value
 
                         #blender_obj["material_name"] = material_name
-                        #blender_obj["surface_id"] = -1
+                        blender_obj["surface_id"] = -1
                         #blender_obj["texture_id"] = -1
-                        #blender_obj["surface_index"] = -1
+                        blender_obj["surface_index"] = -1
                         #blender_obj["material_group_size"] = len(face_ids)
                         #blender_obj["object_type"] = object_type
                         #blender_obj["original_object"] = obj.name
                         _t_props += time.time() - _t3
+
+                        if getattr(import_settings, "cleanup_brush_meshes", False):
+                            cleanup_bsp_mesh(mesh)
 
                         _t4 = time.time()
                         group_collection = material_collections[material_name]
@@ -916,13 +938,16 @@ def split_object_into_individual_surfaces(
 
                             # Füge Metadaten hinzu
                             #blender_obj["material_name"] = material_name
-                            #blender_obj["surface_id"] = face_id
+                            blender_obj["surface_id"] = face_id
                             #blender_obj["texture_id"] = face.texture
-                            #blender_obj["surface_index"] = surface_index
+                            blender_obj["surface_index"] = surface_index
                             #blender_obj["material_group_size"] = len(face_ids)
                             #blender_obj["object_type"] = object_type
                             #blender_obj["original_object"] = obj.name
                             _t_props += time.time() - _t3
+
+                            if getattr(import_settings, "cleanup_brush_meshes", False):
+                                cleanup_bsp_mesh(mesh)
 
                             # Verlinke Objekt zur entsprechenden Material-Gruppen-Collection
                             _t4 = time.time()
@@ -1306,6 +1331,7 @@ def import_bsp_file(import_settings):
     sort_bsp_objects_into_collections(main_collection)
     logger.end_task()
 
+    # Unity preset: import brushes as invisible collision geometry
     logger.start_task("Handle Fog Volumes")
     bsp_fogs = bsp_file.get_bsp_fogs()
     fog_meshes = create_meshes_from_models(bsp_fogs)
@@ -1444,6 +1470,112 @@ def import_bsp_file(import_settings):
     logger.start_task("Prepare Textures for Unity")
     QuakeShader.prepare_textures_for_unity(VFS, import_settings, blender_objects)
     logger.end_task()
+
+    # Unity preset: create collision geometry from compiled BSP faces
+    if import_settings.preset == "UNITY":
+        logger.start_task("Import Collision Geometry")
+        col_name = "{}_collision".format(main_collection.name)
+        collision_collection = bpy.data.collections.get(col_name)
+        if collision_collection is None:
+            collision_collection = bpy.data.collections.new(name=col_name)
+            main_collection.children.link(collision_collection)
+
+        # Build collision from compiled faces (proper openings/arches)
+        # but filter out models/ shaders at BSP face level (no tree quads).
+        # Includes all models (*0, *1, *2, ...).
+        bsp_surface_types = (
+            Surface_Type.PLANAR,
+            Surface_Type.TRISOUP,
+            Surface_Type.FAKK_TERRAIN,
+        )
+        bsp_models = []
+        for model_id in range(len(bsp_file.lumps["models"])):
+            model = MODEL("*{}".format(model_id))
+            model.init_bsp_face_data(bsp_file, import_settings)
+            bsp_model = bsp_file.lumps["models"][model_id]
+            first_face = bsp_model.face
+
+            for i in range(bsp_model.n_faces):
+                face_id = first_face + i
+                face = bsp_file.lumps["surfaces"][face_id]
+
+                # Skip tree/model faces — no collision for bsp-embedded models
+                shader_name = bsp_file.lumps["shaders"][face.texture].name.decode("latin-1")
+                if shader_name.startswith("models/"):
+                    continue
+
+                surface_type = Surface_Type.bsp_value(face.type)
+                if not bool(surface_type & import_settings.surface_types):
+                    continue
+
+                if surface_type in bsp_surface_types:
+                    model.add_bsp_surface(bsp_file, face, import_settings)
+                elif surface_type == Surface_Type.PATCH:
+                    model.add_bsp_patch(bsp_file, face, import_settings)
+
+            if model.current_index > 0:
+                bsp_models.append(model)
+
+        blender_meshes = create_meshes_from_models(bsp_models)
+
+        for mesh_name in blender_meshes:
+            mesh, vertex_groups = blender_meshes[mesh_name]
+            if mesh is None:
+                mesh = bpy.data.meshes.new(mesh_name)
+
+            if len(mesh.polygons) == 0:
+                bpy.data.meshes.remove(mesh)
+                continue
+
+            # Clean up: merge duplicate verts, remove degenerates
+            cleanup_bsp_mesh(mesh)
+
+            # Triangulate for Unity (prevents self-intersecting N-gon warnings)
+            bm = bmesh.new()
+            bm.from_mesh(mesh)
+            bmesh.ops.triangulate(bm, faces=bm.faces)
+            bm.to_mesh(mesh)
+            bm.free()
+            mesh.update()
+
+            col_obj_name = "COL_{}".format(mesh_name)
+            ob = bpy.data.objects.new(name=col_obj_name, object_data=mesh)
+            mesh.materials.clear()
+            ob.hide_render = True
+            ob.display_type = 'WIRE'
+            collision_collection.objects.link(ob)
+
+        # Hide collision collection in viewport by default
+        layer_collection = bpy.context.view_layer.layer_collection.children.get(
+            main_collection.name
+        )
+        if layer_collection:
+            col_layer = layer_collection.children.get(collision_collection.name)
+            if col_layer:
+                col_layer.exclude = False
+                col_layer.hide_viewport = True
+        logger.end_task()
+
+    # Unity preset: bake scale directly into mesh vertices (inches to meters)
+    if import_settings.preset == "UNITY":
+        logger.start_task("Apply Unity Scale (0.0254)")
+        UNITY_SCALE = 0.0254
+        from mathutils import Matrix
+        scale_matrix = Matrix.Scale(UNITY_SCALE, 4)
+        scaled_meshes = set()
+        for ob in main_collection.all_objects:
+            # Bake scale into mesh data so FBX export is correct regardless of settings
+            if ob.data and hasattr(ob.data, 'transform') and ob.data.name not in scaled_meshes:
+                ob.data.transform(scale_matrix)
+                ob.data.update()
+                scaled_meshes.add(ob.data.name)
+            # Scale location (origin offset)
+            ob.location = (
+                ob.location[0] * UNITY_SCALE,
+                ob.location[1] * UNITY_SCALE,
+                ob.location[2] * UNITY_SCALE,
+            )
+        logger.end_task()
 
     logger.log_summary()
 

@@ -93,6 +93,9 @@ class Import_ID3_BSP(bpy.types.Operator, ImportHelper):
              "Imports all Brushes", 3),
             (Preset.SHADOW_BRUSHES.value, "Shadow Brushes", "Imports "
              "Brushes as shadow casters", 4),
+            (Preset.UNITY.value, "Unity",
+             "Compiled faces for visuals + Brushes as invisible collision "
+             "geometry in a separate collection", 5),
         ])
     subdivisions: IntProperty(
         name="Patch subdivisions",
@@ -122,6 +125,10 @@ class Import_ID3_BSP(bpy.types.Operator, ImportHelper):
         name="Merge surfaces by material",
         description="Create one object per material group instead of one per surface",
         default=False)
+    cleanup_brush_meshes: BoolProperty(
+        name="Clean up brush meshes",
+        description="Merge duplicate vertices, remove degenerate faces and loose geometry. Fixes self-intersecting polygon warnings in Unity",
+        default=False)
 
     def execute(self, context):
         addon_name = __name__.split('.')[0]
@@ -139,6 +146,12 @@ class Import_ID3_BSP(bpy.types.Operator, ImportHelper):
                              Surface_Type.PATCH |
                              Surface_Type.TRISOUP |
                              Surface_Type.FAKK_TERRAIN)
+        elif self.preset == Preset.UNITY.value:
+            surface_types = (Surface_Type.PLANAR |
+                             Surface_Type.PATCH |
+                             Surface_Type.TRISOUP |
+                             Surface_Type.FAKK_TERRAIN |
+                             Surface_Type.BRUSH)
         else:
             surface_types = (Surface_Type.PLANAR |
                              Surface_Type.PATCH |
@@ -169,7 +182,8 @@ class Import_ID3_BSP(bpy.types.Operator, ImportHelper):
             vert_lit_handling=stupid_dict[self.vert_map_packing],
             normal_map_option=prefs.normal_map_option,
             surface_info_storing=Surface_info_storing.PER_TRIANGLE,
-            merge_surfaces_by_material=self.merge_surfaces_by_material
+            merge_surfaces_by_material=self.merge_surfaces_by_material,
+            cleanup_brush_meshes=self.cleanup_brush_meshes
         )
 
         # scene information
@@ -219,6 +233,8 @@ class Import_ID3_BSP(bpy.types.Operator, ImportHelper):
         row.prop(prefs, "normal_map_option")
         row = layout.row()
         row.prop(self, "merge_surfaces_by_material")
+        row = layout.row()
+        row.prop(self, "cleanup_brush_meshes")
 
 class Import_MAP(bpy.types.Operator, ImportHelper):
     """Import a ID3 engine MAP file (Quake 3, Jedi Outcast/Academy, etc.)"""

@@ -10,6 +10,7 @@ class Preset(Enum):
     BRUSHES = "BRUSHES"
     SHADOW_BRUSHES = "SHADOW_BRUSHES"
     ONLY_LIGHTS = "ONLY_LIGHTS"
+    UNITY = "UNITY"
 
 class NormalMapOption(Enum):
     OPENGL = "OPENGL"
@@ -78,6 +79,7 @@ class Import_Settings:
     surface_info_storing: Surface_info_storing = Surface_info_storing.NONE
     unity_mode: bool = False
     merge_surfaces_by_material: bool = False
+    cleanup_brush_meshes: bool = False
 
     def __post_init__(self):
         self.bsp_name = guess_map_name(self.file)

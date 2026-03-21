@@ -291,6 +291,17 @@ class BSP_READER:
                 models.append(model)
 
         return models
+
+    def get_bsp_brush_models(self) -> List[MODEL]:
+        """Get models using only raw brush geometry (no compiled faces).
+        This is what the engine uses for collision detection."""
+        models = []
+        for i in range(len(self.lumps["models"])):
+            model = MODEL("*"+str(i))
+            model.add_bsp_model_brushes(self, i, self.import_settings)
+            if model.current_index > 0:
+                models.append(model)
+        return models
     
     def get_bsp_fogs(self) -> List[MODEL]:
         models = []

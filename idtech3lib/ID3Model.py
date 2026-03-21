@@ -648,7 +648,8 @@ class ID3Model:
         brush_shader = ""
         planes = []
 
-        if import_settings.preset == "SHADOW_BRUSHES":
+        _filter_presets = ("SHADOW_BRUSHES", "UNITY")
+        if import_settings.preset in _filter_presets:
             brush_shader = (
                 bsp.lumps["shaders"]
                 [bsp_brush.texture].name.decode("latin-1"))
@@ -677,7 +678,7 @@ class ID3Model:
                 bsp_brush.brushside + side]
             bsp_plane = bsp.lumps["planes"][brushside.plane]
 
-            if import_settings.preset == "SHADOW_BRUSHES":
+            if import_settings.preset in _filter_presets:
                 shader = brush_shader
             else:
                 shader = (
