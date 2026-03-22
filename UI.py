@@ -129,6 +129,10 @@ class Import_ID3_BSP(bpy.types.Operator, ImportHelper):
         name="Clean up brush meshes",
         description="Merge duplicate vertices, remove degenerate faces and loose geometry. Fixes self-intersecting polygon warnings in Unity",
         default=False)
+    import_lights: BoolProperty(
+        name="Import lights",
+        description="Import light entities as Blender lights. Disable to avoid shadow atlas overflow in Unity URP",
+        default=False)
 
     def execute(self, context):
         addon_name = __name__.split('.')[0]
@@ -183,7 +187,8 @@ class Import_ID3_BSP(bpy.types.Operator, ImportHelper):
             normal_map_option=prefs.normal_map_option,
             surface_info_storing=Surface_info_storing.PER_TRIANGLE,
             merge_surfaces_by_material=self.merge_surfaces_by_material,
-            cleanup_brush_meshes=self.cleanup_brush_meshes
+            cleanup_brush_meshes=self.cleanup_brush_meshes,
+            import_lights=self.import_lights
         )
 
         # scene information
@@ -235,6 +240,9 @@ class Import_ID3_BSP(bpy.types.Operator, ImportHelper):
         row.prop(self, "merge_surfaces_by_material")
         row = layout.row()
         row.prop(self, "cleanup_brush_meshes")
+        if self.preset == Preset.UNITY.value:
+            row = layout.row()
+            row.prop(self, "import_lights")
 
 class Import_MAP(bpy.types.Operator, ImportHelper):
     """Import a ID3 engine MAP file (Quake 3, Jedi Outcast/Academy, etc.)"""

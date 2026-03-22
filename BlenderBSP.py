@@ -624,6 +624,34 @@ def create_blender_light(import_settings, bsp_object, objects):
     set_custom_properties(import_settings, light, bsp_object)
     # Add driver for the blender light intensity based on the entity data
     add_light_drivers(light)
+    return light
+
+
+def create_light_marker(import_settings, bsp_object, objects):
+    """Creates an empty marker object for a light entity instead of a real
+    Blender light.  All entity key/value pairs are stored as custom
+    properties so they survive FBX export and can be read in Unity."""
+    properties = bsp_object.custom_parameters
+
+    # Determine the light type string for Unity
+    light_type = "Point"
+    if "target" in properties:
+        if "_sun" in properties and properties["_sun"] == 1:
+            light_type = "Sun"
+        else:
+            light_type = "Spot"
+
+    marker = bpy.data.objects.new(bsp_object.name, None)
+    marker.empty_display_type = 'SPHERE'
+    marker.empty_display_size = 0.25
+    marker.location = bsp_object.position
+
+    bpy.context.collection.objects.link(marker)
+
+    set_custom_properties(import_settings, marker, bsp_object)
+    marker["light_type"] = light_type
+
+    return marker
 
 
 def is_object_valid_for_preset(bsp_object, import_settings):
@@ -642,6 +670,8 @@ def is_object_valid_for_preset(bsp_object, import_settings):
             return True
         if preset == "RENDERING" and classname == "misc_model":
             return False
+        if preset == "UNITY" and classname == "light":
+            return import_settings.import_lights
 
     class_dict = {}
     if classname in import_settings.entity_dict:
@@ -1066,7 +1096,13 @@ def create_blender_objects(VFS, import_settings, objects, meshes, bsp):
         if obj.mesh_name is None:
             classname = obj.custom_parameters.get("classname")
             if classname is not None and classname == "light":
-                create_blender_light(import_settings, obj, objects)
+                if import_settings.import_lights:
+                    if import_settings.preset == "UNITY":
+                        marker = create_light_marker(
+                            import_settings, obj, objects)
+                        object_list.append(marker)
+                    else:
+                        create_blender_light(import_settings, obj, objects)
                 processed_count += 1
                 continue
             else:

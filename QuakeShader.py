@@ -1691,7 +1691,7 @@ def build_quake_shaders(VFS, import_settings, object_list):
     material_list = []
     material_names = []
     for object in object_list:
-        if object.data.name == "box":
+        if object.data is None or object.data.name == "box":
             continue
         force_vertex = False
         force_grid = False

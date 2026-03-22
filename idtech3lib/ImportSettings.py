@@ -80,6 +80,7 @@ class Import_Settings:
     unity_mode: bool = False
     merge_surfaces_by_material: bool = False
     cleanup_brush_meshes: bool = False
+    import_lights: bool = True
 
     def __post_init__(self):
         self.bsp_name = guess_map_name(self.file)
