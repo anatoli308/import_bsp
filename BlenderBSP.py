@@ -672,6 +672,8 @@ def is_object_valid_for_preset(bsp_object, import_settings):
             return False
         if preset == "UNITY" and classname == "light":
             return import_settings.import_lights
+        if preset == "UNITY":
+            return import_settings.import_entities
 
     class_dict = {}
     if classname in import_settings.entity_dict:
@@ -1109,6 +1111,19 @@ def create_blender_objects(VFS, import_settings, objects, meshes, bsp):
                 class_dict = {}
                 if classname in import_settings.entity_dict:
                     class_dict = import_settings.entity_dict[classname]
+                # Unity: create empty markers instead of box meshes
+                if import_settings.preset == "UNITY":
+                    has_model = "Model" in class_dict and class_dict["Model"] != "box"
+                    if not has_model:
+                        marker = bpy.data.objects.new(obj.name, None)
+                        marker.empty_display_type = 'PLAIN_AXES'
+                        marker.empty_display_size = 0.25
+                        marker.location = obj.position
+                        bpy.context.collection.objects.link(marker)
+                        set_custom_properties(import_settings, marker, obj)
+                        object_list.append(marker)
+                        processed_count += 1
+                        continue
                 obj.mesh_name = "box"
                 if "Model" in class_dict:
                     obj.mesh_name = class_dict["Model"]

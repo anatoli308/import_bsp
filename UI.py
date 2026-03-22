@@ -131,7 +131,11 @@ class Import_ID3_BSP(bpy.types.Operator, ImportHelper):
         default=False)
     import_lights: BoolProperty(
         name="Import lights",
-        description="Import light entities as Blender lights. Disable to avoid shadow atlas overflow in Unity URP",
+        description="Import light entities as empty markers with custom properties for Unity",
+        default=False)
+    import_entities: BoolProperty(
+        name="Import entities",
+        description="Import non-model entities (spawns, triggers, etc.) as empty markers with custom properties for Unity",
         default=False)
 
     def execute(self, context):
@@ -188,7 +192,8 @@ class Import_ID3_BSP(bpy.types.Operator, ImportHelper):
             surface_info_storing=Surface_info_storing.PER_TRIANGLE,
             merge_surfaces_by_material=self.merge_surfaces_by_material,
             cleanup_brush_meshes=self.cleanup_brush_meshes,
-            import_lights=self.import_lights
+            import_lights=self.import_lights,
+            import_entities=self.import_entities
         )
 
         # scene information
@@ -243,6 +248,8 @@ class Import_ID3_BSP(bpy.types.Operator, ImportHelper):
         if self.preset == Preset.UNITY.value:
             row = layout.row()
             row.prop(self, "import_lights")
+            row = layout.row()
+            row.prop(self, "import_entities")
 
 class Import_MAP(bpy.types.Operator, ImportHelper):
     """Import a ID3 engine MAP file (Quake 3, Jedi Outcast/Academy, etc.)"""
