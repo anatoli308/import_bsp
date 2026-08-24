@@ -1683,6 +1683,91 @@ def create_white_image():
     new_image.use_fake_user = True
 
 
+def get_stage_texture(stage):
+    for key in ("map", "clampmap"):
+        value = stage.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.split()[0]
+    value = stage.get("animmap")
+    if isinstance(value, str):
+        parts = value.split()
+        if len(parts) > 1:
+            return parts[1]
+    return None
+
+
+def get_mapped_texture(attributes, stages, fallback_texture):
+    for stage in stages:
+        texture = get_stage_texture(stage)
+        if texture is None:
+            continue
+        if texture.startswith("$"):
+            continue
+        return texture
+    if "qer_editorimage" in attributes:
+        return attributes["qer_editorimage"][0].split()[0]
+    return fallback_texture
+
+
+def has_transparent_stage(stages):
+    for stage in stages:
+        if "alphafunc" in stage:
+            return True
+        blendfunc = stage.get("blendfunc")
+        if isinstance(blendfunc, str) and "src_alpha" in blendfunc:
+            return True
+    return False
+
+
+def apply_shader_custom_properties(
+    object_list, current_shader, attributes, stages
+):
+    """Writes shader metadata to every material slot using this shader.
+
+    Suffixed with the slot index so objects with several shaders keep all of
+    their entries.
+    """
+    mapped_texture = get_mapped_texture(
+        attributes, stages, current_shader.texture
+    )
+    is_transparent = has_transparent_stage(stages)
+
+    for obj in object_list:
+        for slot_index, material_slot in enumerate(obj.material_slots):
+            if material_slot.name != current_shader.name:
+                continue
+
+            suffix = "_{}".format(slot_index)
+            if "surfaceparm" in attributes:
+                obj["surface_types_json" + suffix] = json.dumps(
+                    attributes["surfaceparm"]
+                )
+            if "q3map_material" in attributes:
+                obj["q3map_material" + suffix] = attributes["q3map_material"][0]
+            if "cull" in attributes:
+                obj["cull" + suffix] = json.dumps(attributes["cull"])
+            if "skyparms" in attributes:
+                obj["sun" + suffix] = json.dumps(attributes.get("sun", []))
+                obj["surfacelight" + suffix] = json.dumps(
+                    attributes.get("q3map_surfacelight", [])
+                )
+                obj["sky_types_json" + suffix] = json.dumps(
+                    attributes["skyparms"]
+                )
+            if "fogparms" in attributes:
+                obj["fog_types_json" + suffix] = json.dumps(
+                    attributes["fogparms"]
+                )
+            if "qer_trans" in attributes:
+                obj["transvalue_json" + suffix] = json.dumps(
+                    attributes["qer_trans"]
+                )
+            if is_transparent:
+                obj["is_transparent" + suffix] = True
+            if mapped_texture is not None:
+                obj["mapped_texture" + suffix] = mapped_texture
+
+
 def build_quake_shaders(VFS, import_settings, object_list):
     # make sure the $whiteimage is loaded
     create_white_image()
@@ -1777,62 +1862,10 @@ def build_quake_shaders(VFS, import_settings, object_list):
                     has_external_lm = True
             
             # Set custom properties on objects that use this shader
-            # Use material slot index as suffix to avoid overwriting when
-            # an object references more than one shader.
-            for obj in object_list:
-                slot_index = None
-                for si, material_slot in enumerate(obj.material_slots):
-                    if material_slot.name == current_shader.name:
-                        slot_index = si
-                        break
-                
-                if slot_index is not None:
-                    suffix = "_{}".format(slot_index)
-                    #if "first_line" in attributes:
-                    #    obj["first_line" + suffix] = attributes["first_line"]
-                    #if "shader_file" in attributes:
-                    #    obj["shader_file" + suffix] = attributes["shader_file"]
-                    if "surfaceparm" in attributes:
-                        obj["surface_types_json" + suffix] = json.dumps(
-                            attributes.get("surfaceparm", [])
-                        )
-                    if "q3map_material" in attributes:
-                        obj["q3map_material" + suffix] = attributes["q3map_material"][0]
-                    if "cull" in attributes:
-                        obj["cull" + suffix] = json.dumps(attributes.get("cull", []))
-                    if "skyparms" in attributes:
-                        obj["sun" + suffix] = json.dumps(attributes.get("sun", []))
-                        obj["surfacelight" + suffix] = json.dumps(attributes.get("q3map_surfacelight", []))
-                        obj["sky_types_json" + suffix] = json.dumps(
-                            attributes.get("skyparms", [])
-                        )
-                    if "fogparms" in attributes:
-                        obj["fog_types_json" + suffix] = json.dumps(
-                            attributes.get("fogparams", [])
-                        )
-                    if "qer_trans" in attributes:
-                        obj["transvalue_json" + suffix] = json.dumps(attributes.get("qer_trans", []))
-                    
-                    # Check transparency and mapped texture in separate loops
-                    # so a break in one doesn't skip the other.
-                    if len(stages) > 0:
-                        for stage in stages:
-                            if "blendfunc" in stage:
-                                blendfunc_value = stage["blendfunc"]
-                                if isinstance(blendfunc_value, str) and "src_alpha" in blendfunc_value:
-                                    obj["is_transparent" + suffix] = True
-                                    break
-                            if "alphafunc" in stage:
-                                obj["is_transparent" + suffix] = True
-                                break
+            apply_shader_custom_properties(
+                object_list, current_shader, attributes, stages
+            )
 
-                        for stage in stages:
-                            if "map" in stage:
-                                map_value = stage["map"]
-                                if isinstance(map_value, str) and "$whiteimage" not in map_value and "$lightmap" not in map_value:
-                                    obj["mapped_texture" + suffix] = map_value.split()[0]
-                                    break
-            
             # polygon offset to vertex group
             if "polygonoffset" in attributes or has_external_lm:
                 for obj in object_list:
@@ -1863,6 +1896,8 @@ def build_quake_shaders(VFS, import_settings, object_list):
             continue
         for current_shader in shaders[shader]:
             current_shader.finish_shader(VFS, import_settings)
+            # no .shader entry: the material name is the texture itself
+            apply_shader_custom_properties(object_list, current_shader, {}, [])
 
     for object in object_list:
         vg = object.vertex_groups.get("Decals")

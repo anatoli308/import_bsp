@@ -14,6 +14,7 @@ def create_white_image():
 
 def get_material_dicts(VFS, import_settings, material_list):
 
+    shader_list = []
     for shader_path in import_settings.shader_dirs:
         reg = "^" + shader_path + r"(.*?).shader$"
         shader_list = VFS.search(reg)
@@ -21,6 +22,7 @@ def get_material_dicts(VFS, import_settings, material_list):
             break
 
     shader_info = {}
+    material_list = set(material_list)
 
     for shader_file in shader_list:
         shader_bytearray = VFS.get(shader_file)
@@ -37,31 +39,12 @@ def get_material_dicts(VFS, import_settings, material_list):
             # skip empty lines or comments
             if (l_empty(line) or l_comment(line)):
                 continue
-            # content
-            if (not l_open(line) and not l_close(line)):
-                # shader names
-                if is_open == 0:
-                    if line in material_list:
-                        current_shader = line
-                        attributes["first_line"] = line_num + 1
-                        attributes["shader_file"] = shader_file
-                # shader attributes
-                elif is_open == 1 and current_shader:
-                    key, value = parse(line)
-                    if key in attributes:
-                        attributes[key].append(value)
-                    else:
-                        attributes[key] = [value]
-                # stage info
-                elif is_open == 2 and current_shader:
-                    key, value = parse(line)
-                    # FIXME: multiple tcMods are supported by the game engine
-                    stage[key] = value
             # marker open
-            elif l_open(line):
+            if l_open(line):
                 is_open = is_open + 1
+                continue
             # marker close
-            elif l_close(line):
+            if l_close(line):
                 # close stage
                 if is_open == 2 and current_shader:
                     stages.append(stage)
@@ -73,7 +56,32 @@ def get_material_dicts(VFS, import_settings, material_list):
                     attributes = {}
                     stages = []
                     current_shader = None
-                is_open -= 1
+                is_open = max(is_open - 1, 0)
+                continue
+            # content
+            # shader names
+            if is_open == 0:
+                name = line.split("//")[0].strip()
+                # some shader files put the opening brace on the name line
+                if "{" in name:
+                    name = name.split("{")[0].strip()
+                    is_open = is_open + 1
+                if name in material_list:
+                    current_shader = name
+                    attributes["first_line"] = line_num + 1
+                    attributes["shader_file"] = shader_file
+            # shader attributes
+            elif is_open == 1 and current_shader:
+                key, value = parse(line)
+                if key in attributes:
+                    attributes[key].append(value)
+                else:
+                    attributes[key] = [value]
+            # stage info
+            elif is_open == 2 and current_shader:
+                key, value = parse(line)
+                # FIXME: multiple tcMods are supported by the game engine
+                stage[key] = value
     return shader_info
 
 
