@@ -1594,6 +1594,14 @@ def import_bsp_file(import_settings):
 
         blender_meshes = create_meshes_from_models(bsp_models)
 
+        # Map "*N" back to the entity that references the model, so the collision
+        # object carries the same keys as the visible entity (Unity reads them from FBX).
+        entities_by_model_name = {}
+        if bsp_objects is not None:
+            for bsp_object in bsp_objects.values():
+                if bsp_object.mesh_name and bsp_object.mesh_name.startswith("*"):
+                    entities_by_model_name.setdefault(bsp_object.mesh_name, bsp_object)
+
         for mesh_name in blender_meshes:
             mesh, vertex_groups = blender_meshes[mesh_name]
             if mesh is None:
@@ -1640,6 +1648,20 @@ def import_bsp_file(import_settings):
             ob.hide_render = True
             ob.display_type = 'WIRE'
             collision_collection.objects.link(ob)
+
+            model_name = mesh_name[: -len("_clip")] if mesh_name.endswith("_clip") else mesh_name
+            source_entity = entities_by_model_name.get(model_name)
+            if source_entity is not None:
+                # Same transform as the visible surfaces of that entity
+                ob.location = source_entity.position
+                ob.rotation_euler = source_entity.rotation
+                ob.scale = source_entity.scale
+                if source_entity.custom_parameters.get("classname") is not None:
+                    set_custom_properties(import_settings, ob, source_entity)
+                else:
+                    for prop_name, prop_value in source_entity.custom_parameters.items():
+                        ob[prop_name] = prop_value
+                ob["collision_source"] = model_name
 
         # Hide collision collection in viewport by default
         layer_collection = bpy.context.view_layer.layer_collection.children.get(
