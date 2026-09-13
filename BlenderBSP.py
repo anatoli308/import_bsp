@@ -1592,6 +1592,20 @@ def import_bsp_file(import_settings):
             if brush_model.current_index > 0:
                 bsp_models.append(brush_model)
 
+        # 3) Raw brushes from *0: ladder volumes (SoF2 CONTENTS_LADDER, tools/_ladder_*)
+        #    These are nodraw + nonsolid — neither in compiled faces nor in the clip pass.
+        CONTENTS_LADDER = 0x00002000
+        ladder_shaders = set()
+        for shader in bsp_file.lumps["shaders"]:
+            if shader.contents & CONTENTS_LADDER:
+                ladder_shaders.add(shader.name.decode("latin-1"))
+
+        if ladder_shaders:
+            ladder_model = MODEL("*0_ladder")
+            ladder_model.add_bsp_model_brushes(bsp_file, 0, import_settings)
+            if ladder_model.current_index > 0:
+                bsp_models.append(ladder_model)
+
         blender_meshes = create_meshes_from_models(bsp_models)
 
         # Map "*N" back to the entity that references the model, so the collision
@@ -1607,13 +1621,18 @@ def import_bsp_file(import_settings):
             if mesh is None:
                 mesh = bpy.data.meshes.new(mesh_name)
 
-            # For *0_clip: keep ONLY nodraw+solid materials (clips, nodraw_solid)
-            if mesh_name == "*0_clip" and len(mesh.materials) > 0:
+            # For *0_clip / *0_ladder: keep ONLY the matching brush materials
+            filter_shaders = None
+            if mesh_name == "*0_clip":
+                filter_shaders = nodraw_solid_shaders
+            elif mesh_name == "*0_ladder":
+                filter_shaders = ladder_shaders
+            if filter_shaders is not None and len(mesh.materials) > 0:
                 keep_indices = set()
                 for i, mat in enumerate(mesh.materials):
                     if mat is not None:
                         base = mat.name[:-6] if mat.name.endswith(".brush") else mat.name
-                        if base in nodraw_solid_shaders or mat.name in nodraw_solid_shaders:
+                        if base in filter_shaders or mat.name in filter_shaders:
                             keep_indices.add(i)
                 remove_indices = {i for i in range(len(mesh.materials))} - keep_indices
                 if remove_indices:
@@ -1649,7 +1668,11 @@ def import_bsp_file(import_settings):
             ob.display_type = 'WIRE'
             collision_collection.objects.link(ob)
 
-            model_name = mesh_name[: -len("_clip")] if mesh_name.endswith("_clip") else mesh_name
+            model_name = mesh_name
+            for model_suffix in ("_clip", "_ladder"):
+                if model_name.endswith(model_suffix):
+                    model_name = model_name[: -len(model_suffix)]
+                    break
             source_entity = entities_by_model_name.get(model_name)
             if source_entity is not None:
                 # Same transform as the visible surfaces of that entity
